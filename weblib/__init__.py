@@ -1,1 +1,1 @@
-from weblib.document import DocumentList, StaticList
+from weblib.document import Document, DocumentList, StaticList
