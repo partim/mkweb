@@ -4,6 +4,8 @@ This code based on the django.core.paginator module of the Django Project.
 """
 from math import ceil
 
+from weblib.document import Document
+
 
 class Paginator(object):
     def __init__(self, object_list, per_page, orphans=0,
@@ -28,19 +30,19 @@ class Paginator(object):
         if isinstance(key, slice):
             return list(self.__getitem__(i) for i in key.indices(self.len))
         elif not isinstance(key, int):
-            raise TypeError, "index must be an integer or a slice"
+            raise TypeError("index must be an integer or a slice")
         if key < 0:
             key += self.len
         if key >= self.len or key < 0:
-            raise IndexError, "page index out of range"
+            raise IndexError("page index out of range")
         bottom = key * self.per_page
         top = bottom + self.per_page
         if top + self.orphans >= len(self.object_list):
             top = len(self.object_list)
-        return Page(self.object_list[bottom:top], number, self)
+        return Page(self.object_list[bottom:top], key, self)
 
 
-class Page(list):
+class Page(list, Document):
     def __init__(self, object_list, number, paginator):
         super().__init__(object_list)
         self.number = number
@@ -50,7 +52,7 @@ class Page(list):
         return self.number < len(self.paginator) - 1
 
     def has_previous(self):
-        return self.number > 1
+        return self.number > 0
 
     def has_other_pages(self):
         return self.has_previous() or self.has_next()
