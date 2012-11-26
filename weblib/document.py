@@ -138,10 +138,12 @@ class Sequence(object):
 
 
 class DocumentList(list, Document):
-    def __init__(self, pattern, doc_type=None, sort_key=None):
+    def __init__(self, pattern=None, doc_type=None, sort_key=None,
+                 sort_reverse=False):
         super().__init__()
-        self.add_by_pattern(pattern, doc_type)
-        self.sort(key=sort_key)
+        if pattern:
+            self.add_by_pattern(pattern, doc_type)
+            self.sort(key=sort_key, reverse=sort_reverse)
 
     def add_by_pattern(self, pattern, doc_type=None):
         for m in self.find_by_pattern(pattern):
