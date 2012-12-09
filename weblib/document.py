@@ -1,6 +1,6 @@
 """Various document classes."""
 
-import os.path
+import os
 import re
 import shutil
 
@@ -8,7 +8,10 @@ try:
     import markdown
 except ImportError:
     pass
-
+try:
+    import yaml
+except ImportError:
+    pass
 from weblib.conf import config
 
 class Document(object):
@@ -40,22 +43,53 @@ class Document(object):
         fp = open(target_path, mode="w", encoding="utf-8")
         template.stream(context).dump(fp)
 
+    def i18n_render(self, *args, **kwargs):
+        had_lang = hasattr(self, "lang")
+        if had_lang:
+            old_lang = self.lang
+        for lang in config.languages:
+            self.lang = lang
+            self.render(*args, **kwargs)
+        if had_lang:
+            self.lang = old_lang
+        else:
+            delattr(self, "lang")
+
     def format(self, text):
         return text.format_map(self.__dict__)
 
 
 class StaticDocument(Document):
-    """A static file that can't only be copied."""
+    """A static file that can only be copied."""
     def __init__(self, path, **kwargs):
         super().__init__(**kwargs)
         self._path = os.path.join(getattr(config, "source_base", "."), path)
 
-    def install(self, target):
+    def install(self, target, force=False):
+        source_path, target_path, make = self.prepare_target(target)
+        if make or force:
+            shutil.copy(source_path, target_path)
+
+    def prepare_target(self, target):
+        """Prepares the target file for writing.
+
+        Returns a tripel of: the full source path, the full target path,
+        and whether target needs making (ie., is older than source or doesn't
+        exist).
+        """
         target = self.format(target)
         target_base = getattr(config, "target_base", ".")
         target_path = os.path.join(target_base, target)
+        try:
+            target_time = os.stat(target_path).st_mtime
+        except OSError:
+            target_time = float("-inf")
+        try:
+            source_time = os.stat(self._path).st_mtime
+        except OSError:
+            source_time = float("-inf")
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        shutil.copy(self._path, target_path)
+        return self._path, target_path, source_time > target_time
 
 
 class ParsedDocument(Document):
@@ -115,6 +149,23 @@ class MarkdownDocument(ParsedDocument):
         self.content = content
 
 
+class YamlDocument(ParsedDocument):
+    """A document parsed from a YAML file.
+
+    The file must contain only a single YAML document which in turn must
+    be a map. Use :class:`YamlDocumentList` for files with multiple
+    documents.
+    """
+    def parse(self, path):
+        fp = open(path, "r", encoding="utf-8")
+        try:
+            data = yaml.safe_load(fp)
+        except NameError:
+            raise RuntimeError("missing python-yaml library")
+        for key, value in data.items():
+            setattr(self, key, value)
+
+
 DOCTYPES = {
     '.py': PythonDocument,
     '.md': MarkdownDocument,
@@ -164,6 +215,9 @@ class DocumentList(list, Document):
         if key is None:
             key = lambda x: x.source_path
         super().sort(key=key, reverse=reverse)
+        self.prepare_sequences()
+
+    def prepare_sequences(self):
         for idx, item in enumerate(self):
             item.sequence = Sequence(idx, self)
 
@@ -196,3 +250,34 @@ class DocumentList(list, Document):
 class StaticList(DocumentList):
     def __init__(self, pattern, **kwargs):
         super().__init__(pattern, doc_type=StaticDocument, **kwargs)
+
+
+class YamlDocumentList(list, Document):
+    def __init__(self, path, list_attr="items"):
+        super().__init__()
+        path = os.path.join(getattr(config, "source_base", "."), path)
+        fp = open(path, "r", encoding="utf-8")
+        try:
+            data = yaml.safe_load(fp)
+        except NameError:
+            raise RuntimeError("missing python-yaml library")
+        list_attr = data.pop(list_attr)
+        for key, value in data.items():
+            setattr(self, key, value)
+        for item in list_attr:
+            doc = Document()
+            for key, value in item.items():
+                setattr(doc, key, value)
+            self.append(doc)
+        self.prepare_sequences()
+
+    def sort(self, key=None, reverse=False):
+        if key is None:
+            key = lambda x: x.source_path
+        super().sort(key=key, reverse=reverse)
+        self.prepare_sequences()
+
+    def prepare_sequences(self):
+        for idx, item in enumerate(self):
+            item.sequence = Sequence(idx, self)
+
