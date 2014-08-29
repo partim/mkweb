@@ -198,14 +198,16 @@ class DocumentList(list, Document):
 
     def add_by_pattern(self, pattern, doc_type=None):
         for m in self.find_by_pattern(pattern):
-            if not doc_type:
+            if doc_type:
+                dt = doc_type
+            else:
                 for suffix, type in DOCTYPES.items():
                     if m.string.endswith(suffix):
-                        doc_type = type
+                        dt = type
                         break
                 else:
                     raise RuntimeError("no document type for '%s'" % m.string)
-            doc = doc_type(m.string)
+            doc = dt(m.string)
             for key, value in m.groupdict().items():
                 setattr(doc, key, value)
             doc.source_path = m.string
